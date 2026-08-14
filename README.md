@@ -18,4 +18,13 @@ Give the agent access to read files by implementing a read tool.
 Give the agent access to write files by implementing a write tool.
 
 ### Example 5
+Give the agent the power to call bash commands.
+
+### Homework 1
 Give the agent access to the web by implementing a web search tool (firecrawl in this example).
+
+### Homework 2
+Reading system instructions from the filesystem to replace the default system prompt.
+
+### Homework 3
+Implement a slash command. "/new" should reset the conversation.

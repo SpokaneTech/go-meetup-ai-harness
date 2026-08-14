@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 )
 
 // Client is the main API client for interacting with the chat completion API.
@@ -30,6 +31,10 @@ func NewClient(baseURL *url.URL, apiKey string) Client {
 
 // ChatCompletion issues a chat completion request to an openAI compatible endpoint
 func (c Client) ChatCompletion(ctx context.Context, req ChatCompletionRequest) (_ ChatCompletionResponse, retErr error) {
+	verbose := false
+	if os.Getenv("VERBOSE") != "" {
+		verbose = true
+	}
 	reqURL := c.baseURL.JoinPath("/chat/completions")
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -47,9 +52,17 @@ func (c Client) ChatCompletion(ctx context.Context, req ChatCompletionRequest) (
 	httpReq.Header.Set("User-Agent", "mu2/0.1.0")
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
-	httpResp, err := c.httpClient.Do(httpReq) //nolint:bodyclose // intentionally leaving body open so it can be used in the ChatStream
+	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return ChatCompletionResponse{}, fmt.Errorf("executing http request: %w", err)
+	}
+	if verbose {
+		var prettyJSON bytes.Buffer
+		err := json.Indent(&prettyJSON, reqBytes.Bytes(), "", "  ")
+		// intentionally ignore error, just don't print verbose logs if there was an error marshalling the output
+		if err == nil {
+			fmt.Printf("\033[93mrequest:\n---\n%s\n---\033[0m\n\n", prettyJSON.String())
+		}
 	}
 	defer httpResp.Body.Close()
 	if httpResp.StatusCode < 200 || httpResp.StatusCode > 299 {
@@ -68,11 +81,15 @@ func (c Client) ChatCompletion(ctx context.Context, req ChatCompletionRequest) (
 		return ChatCompletionResponse{}, fmt.Errorf("request failed [%s; code: %d]: %s response: %s", reqURL.String(), httpResp.StatusCode, errorMsg, reqBytes.String())
 	}
 	resp := ChatCompletionResponse{}
-	var buf bytes.Buffer
-	teeBody := io.TeeReader(httpResp.Body, &buf)
-	if err := json.NewDecoder(teeBody).Decode(&resp); err != nil {
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
 		return ChatCompletionResponse{}, fmt.Errorf("decoding response: %w", err)
 	}
-	fmt.Printf("response body: %s\n", buf.String())
+	if verbose {
+		b, err := json.MarshalIndent(resp, "", "  ")
+		// intentionally ignore error, just don't print verbose logs if there was an error marshalling the output
+		if err == nil {
+			fmt.Printf("\033[91mresponse:\n---\n%s\n---\033[0m\n\n", string(b))
+		}
+	}
 	return resp, nil
 }
