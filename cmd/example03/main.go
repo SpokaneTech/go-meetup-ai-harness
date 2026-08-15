@@ -17,6 +17,7 @@ import (
 const (
 	maxIterations = 10
 	listToolName  = "list"
+	readToolName  = "read"
 )
 
 func main() {
@@ -128,34 +129,49 @@ func toolDefinitions() []api.Tool {
 				}`),
 			},
 		},
+		{
+			Type: "function",
+			Function: api.ToolFunction{
+				Name:        readToolName,
+				Description: "Read the contents of a file",
+				Parameters: []byte(`{
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "The path of file to read"
+						}
+					},
+					"required": ["path"]
+				}`),
+			},
+		},
 	}
 }
 
 // runTool calls the appropriate tool. It intentionally never returns an error. Errors should be returned
 // to the agent so the agent can potentially fix the tool call.
 func runTool(ctx context.Context, toolCallID string, toolName string, toolArgs string) api.Message {
-	fmt.Printf("running tool:\t%s, with args: %s\n", toolName, toolArgs)
+	fmt.Printf("\033[36mrunning tool:\t%s, with args: %s\033[0m\n\n", toolName, toolArgs)
+	var content strings.Builder
 	switch toolName {
 	case listToolName:
 		var args struct {
 			Path string `json:"path"`
 		}
 		if err := json.Unmarshal([]byte(toolArgs), &args); err != nil {
-			return api.Message{
-				Role:       api.RoleTool,
-				ToolCallID: toolCallID,
-				Content:    fmt.Sprintf("invalid arguments: %w", err),
-			}
+			fmt.Fprintf(&content, "invalid arguments: %s", err)
+			break
+		}
+		if args.Path == "" {
+			fmt.Fprintf(&content, "path is required")
+			break
 		}
 		files, err := os.ReadDir(args.Path)
 		if err != nil {
-			return api.Message{
-				Role:       api.RoleTool,
-				ToolCallID: toolCallID,
-				Content:    fmt.Sprintf("failed to read directory: %w", err),
-			}
+			fmt.Fprintf(&content, "failed to read directory: %s", err)
+			break
 		}
-		var content strings.Builder
 		for _, f := range files {
 			ftype := "file"
 			if f.IsDir() {
@@ -163,18 +179,32 @@ func runTool(ctx context.Context, toolCallID string, toolName string, toolArgs s
 			}
 			fmt.Fprintf(&content, "[%s] %s\n", ftype, f.Name())
 		}
-		fmt.Printf("returning:\t%s\n", content.String())
-		return api.Message{
-			Role:       api.RoleTool,
-			ToolCallID: toolCallID,
-			Content:    content.String(),
+	case readToolName:
+		var args struct {
+			Path string `json:"path"`
 		}
+		if err := json.Unmarshal([]byte(toolArgs), &args); err != nil {
+			fmt.Fprintf(&content, "invalid arguments: %s", err)
+			break
+		}
+		if args.Path == "" {
+			fmt.Fprintf(&content, "path is required")
+			break
+		}
+		fileContent, err := os.ReadFile(args.Path)
+		if err != nil {
+			fmt.Fprintf(&content, "failed to read file: %s", err)
+			break
+		}
+		content.WriteString(string(fileContent))
 	default:
-		return api.Message{
-			Role:       api.RoleTool,
-			ToolCallID: toolCallID,
-			Content:    fmt.Sprintf("unknown tool: %s", toolName),
-		}
+		fmt.Fprintf(&content, "unknown tool: %s", toolName)
+	}
+	fmt.Printf("\033[36mreturned:\n---\n%s\n---\033[0m\n\n", content.String()[0:min(len(content.String()), 100)])
+	return api.Message{
+		Role:       api.RoleTool,
+		ToolCallID: toolCallID,
+		Content:    content.String(),
 	}
 }
 
