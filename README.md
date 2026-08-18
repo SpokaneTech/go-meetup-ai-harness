@@ -15,7 +15,7 @@ Have a conversation with an AI agent by implementing a simple chat loop.
 Give the agent access to read files by implementing a read tool.
 
 ### Example 4
-Give the agent access to write files by implementing a write tool.
+Give the agent access to write and edit files by implementing an edit tool.
 
 ### Example 5
 Give the agent the power to call bash commands.
